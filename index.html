@@ -1,1 +1,246 @@
-cd
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Example — Interactive Form (HTML + JavaScript)</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;line-height:1.4}
+    body{max-width:900px;margin:32px auto;padding:20px}
+    .card{border:1px solid #e6e6e6;border-radius:10px;padding:20px;box-shadow:0 6px 24px rgba(0,0,0,0.04)}
+    label{display:block;margin-top:12px;font-weight:600}
+    input[type=text],input[type=email],input[type=password],select,textarea,input[type=number]{width:100%;padding:10px;border:1px solid #cfcfcf;border-radius:6px;margin-top:6px}
+    .row{display:flex;gap:12px}
+    .row > *{flex:1}
+    .muted{color:#666;font-size:0.9rem}
+    .inline{display:inline-block;margin-right:10px}
+    .error{color:#b00020;font-size:0.9rem;margin-top:6px}
+    .success{background:#e6ffed;border:1px solid #b6f0c7;padding:12px;border-radius:6px;margin-top:12px}
+    button{padding:10px 14px;border-radius:8px;border:0;background:#333;color:#fff;cursor:pointer}
+    button.secondary{background:#666}
+    .password-meter{height:8px;border-radius:6px;background:#eee;margin-top:6px;overflow:hidden}
+    .password-meter > i{height:100%;display:block}
+    .preview{background:#fafafa;padding:10px;border-radius:6px;margin-top:12px;border:1px dashed #ddd}
+    @media (max-width:640px){.row{flex-direction:column}}
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Interactive Registration Form (HTML + JavaScript)</h1>
+    <p class="muted">Example form with client-side validation, accessibility attributes, password strength meter and a submission preview.</p>
+
+    <form id="userForm" novalidate>
+      <label for="fullName">Full name</label>
+      <input id="fullName" name="fullName" type="text" required minlength="3" autocomplete="name" placeholder="Sanjay Kumar" />
+      <div id="nameError" class="error" aria-live="polite"></div>
+
+      <div class="row">
+        <div>
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" required autocomplete="email" placeholder="you@example.com" />
+          <div id="emailError" class="error" aria-live="polite"></div>
+        </div>
+        <div>
+          <label for="age">Age</label>
+          <input id="age" name="age" type="number" min="10" max="120" placeholder="18" />
+          <div id="ageError" class="error" aria-live="polite"></div>
+        </div>
+      </div>
+
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" required minlength="6" placeholder="Choose a strong password" aria-describedby="passwordHelp" />
+      <div id="passwordHelp" class="muted">Minimum 6 characters. Avoid dictionary words.</div>
+      <div class="password-meter" aria-hidden="true"><i id="meterBar" style="width:0%;background:transparent"></i></div>
+      <div id="passwordError" class="error" aria-live="polite"></div>
+
+      <label>Gender</label>
+      <div role="radiogroup" aria-labelledby="genderLabel">
+        <label class="inline"><input type="radio" name="gender" value="male" checked /> Male</label>
+        <label class="inline"><input type="radio" name="gender" value="female" /> Female</label>
+        <label class="inline"><input type="radio" name="gender" value="other" /> Other</label>
+      </div>
+
+      <label>Interests</label>
+      <label class="inline"><input type="checkbox" name="interests" value="design" /> Design</label>
+      <label class="inline"><input type="checkbox" name="interests" value="dev" /> Development</label>
+      <label class="inline"><input type="checkbox" name="interests" value="music" /> Music</label>
+
+      <label for="country">Country</label>
+      <select id="country" name="country">
+        <option value="">Select country</option>
+        <option>India</option>
+        <option>United States</option>
+        <option>United Kingdom</option>
+        <option>Canada</option>
+        <option>Australia</option>
+      </select>
+
+      <label for="message">Short bio</label>
+      <textarea id="message" name="message" rows="4" placeholder="Tell us a bit about yourself (optional)"></textarea>
+
+      <label for="avatar">Profile picture (optional)</label>
+      <input id="avatar" name="avatar" type="file" accept="image/*" />
+
+      <div style="margin-top:16px;display:flex;gap:10px;align-items:center">
+        <button type="submit">Submit</button>
+        <button type="reset" class="secondary">Reset</button>
+        <div id="formStatus" aria-live="polite" style="margin-left:10px"></div>
+      </div>
+    </form>
+
+    <div id="preview" class="preview" hidden>
+      <strong>Submission preview</strong>
+      <div id="previewContent"></div>
+    </div>
+
+    <div id="success" class="success" hidden aria-live="polite"></div>
+  </main>
+
+  <script>
+    // Small helper utilities
+    const $ = id => document.getElementById(id);
+    const form = $('userForm');
+    const nameInput = $('fullName');
+    const emailInput = $('email');
+    const ageInput = $('age');
+    const pwd = $('password');
+    const preview = $('preview');
+    const previewContent = $('previewContent');
+    const successBox = $('success');
+
+    // Validation messages
+    function setError(elId, message){ $(elId).textContent = message; }
+    function clearErrors(){ ['nameError','emailError','ageError','passwordError'].forEach(id=>$(id).textContent=''); }
+
+    // Very simple password strength function (for demo only)
+    function passwordStrength(p){
+      let score = 0;
+      if(p.length >= 6) score++;
+      if(/[A-Z]/.test(p)) score++;
+      if(/[0-9]/.test(p)) score++;
+      if(/[^A-Za-z0-9]/.test(p)) score++;
+      return score; // 0..4
+    }
+
+    // Update password meter UI
+    const meterBar = $('meterBar');
+    pwd.addEventListener('input', ()=>{
+      const s = passwordStrength(pwd.value);
+      const pct = (s/4)*100;
+      meterBar.style.width = pct + '%';
+      // color by score
+      const colors = ['transparent','#ffb3b3','#ffd28a','#ffe57f','#b8f2b8'];
+      meterBar.style.background = colors[s] || 'transparent';
+    });
+
+    // Live simple validation as user types
+    nameInput.addEventListener('blur', ()=>{
+      if(nameInput.value.trim().length < 3) setError('nameError','Please enter at least 3 characters.');
+      else setError('nameError','');
+    });
+    emailInput.addEventListener('blur', ()=>{
+      if(emailInput.value && !/.+@.+\..+/.test(emailInput.value)) setError('emailError','Enter a valid email address.');
+      else setError('emailError','');
+    });
+    ageInput.addEventListener('blur', ()=>{
+      const v = ageInput.value;
+      if(v && (v < 10 || v > 120)) setError('ageError','Enter a realistic age (10–120).');
+      else setError('ageError','');
+    });
+
+    // Handle form submission
+    form.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      clearErrors();
+      successBox.hidden = true;
+
+      // Gather values
+      const fullName = nameInput.value.trim();
+      const email = emailInput.value.trim();
+      const age = ageInput.value;
+      const password = pwd.value;
+      const gender = form.querySelector('input[name="gender"]:checked')?.value || '';
+      const interests = Array.from(form.querySelectorAll('input[name="interests"]:checked')).map(c=>c.value);
+      const country = $('country').value;
+      const message = $('message').value.trim();
+      const avatarFile = $('avatar').files[0] || null;
+
+      // Basic validation
+      let ok = true;
+      if(fullName.length < 3){ setError('nameError','Name must be at least 3 characters'); ok=false; }
+      if(!/.+@.+\..+/.test(email)){ setError('emailError','Enter a valid email'); ok=false; }
+      if(password.length < 6){ setError('passwordError','Password must be at least 6 characters'); ok=false; }
+      const pwdScore = passwordStrength(password);
+      if(pwdScore < 2){ setError('passwordError','Password is too weak — add numbers, symbols, or uppercase letters.'); ok=false; }
+      if(age && (age < 10 || age > 120)){ setError('ageError','Enter a realistic age (10–120)'); ok=false; }
+
+      if(!ok){ $('formStatus').textContent = 'Fix the errors above and try again.'; return; }
+
+      $('formStatus').textContent = 'Preparing preview...';
+
+      // Build preview (do not send anywhere in this demo)
+      let previewHtml = `<p><strong>Name:</strong> ${escapeHtml(fullName)}</p>`;
+      previewHtml += `<p><strong>Email:</strong> ${escapeHtml(email)}</p>`;
+      previewHtml += `<p><strong>Age:</strong> ${escapeHtml(age || '—')}</p>`;
+      previewHtml += `<p><strong>Gender:</strong> ${escapeHtml(gender || '—')}</p>`;
+      previewHtml += `<p><strong>Interests:</strong> ${escapeHtml(interests.join(', ') || '—')}</p>`;
+      previewHtml += `<p><strong>Country:</strong> ${escapeHtml(country || '—')}</p>`;
+      previewHtml += `<p><strong>Bio:</strong> ${escapeHtml(message || '—')}</p>`;
+
+      if(avatarFile){
+        previewHtml += `<p><strong>Avatar:</strong> ${escapeHtml(avatarFile.name)} (${Math.round(avatarFile.size/1024)} KB)</p>`;
+        // show a small thumbnail
+        const dataUrl = await fileToDataUrl(avatarFile);
+        previewHtml += `<img src="${dataUrl}" alt="avatar preview" style="max-width:120px;border-radius:6px;margin-top:8px;display:block">`;
+      }
+
+      previewContent.innerHTML = previewHtml;
+      preview.hidden = false;
+      $('formStatus').textContent = '';
+
+      // Simulate sending: store to localStorage (demo)
+      const payload = { fullName,email,age,gender,interests,country,message,avatarFileName: avatarFile?.name || null,submittedAt:new Date().toISOString() };
+      try{
+        const key = 'demo_form_' + Date.now();
+        localStorage.setItem(key, JSON.stringify(payload));
+        successBox.textContent = 'Form saved locally (demo). In a real app you would send this payload to your server with fetch().';
+        successBox.hidden = false;
+        form.reset();
+        meterBar.style.width = '0%';
+      }catch(err){
+        successBox.textContent = 'Could not save locally: ' + err.message;
+        successBox.hidden = false;
+      }
+    });
+
+    // Utility: sanitize text for insertion into preview
+    function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
+
+    function fileToDataUrl(file){
+      return new Promise((resolve,reject)=>{
+        const reader = new FileReader();
+        reader.onload = ()=>resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // Reset behavior: hide preview and messages
+    form.addEventListener('reset', ()=>{
+      setTimeout(()=>{ // allow native reset to happen first
+        preview.hidden = true;
+        clearErrors();
+        successBox.hidden = true;
+        $('formStatus').textContent = '';
+        meterBar.style.width = '0%';
+      },0);
+    });
+
+    // Accessibility: focus first invalid on submit attempt (optional enhancement)
+    form.addEventListener('invalid', (e)=>{
+      e.preventDefault();
+      e.target.focus();
+    }, true);
+  </script>
+</body>
+</html>
